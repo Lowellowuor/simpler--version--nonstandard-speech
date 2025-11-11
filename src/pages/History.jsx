@@ -14,15 +14,19 @@ import {
   Volume2,
   MessageSquare,
   FileAudio,
-  Bookmark,
-  BookmarkCheck,
   Archive,
   RefreshCw,
   X,
   MoreVertical,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Loader2
 } from "lucide-react";
+
+// API endpoints
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const SPEECH_LAB_API = `${API_BASE_URL}/api`;
+const VOICE_PERSONALIZER_API = `${API_BASE_URL}/api/voice`;
 
 export default function History() {
   const [activeTab, setActiveTab] = useState("all");
@@ -32,111 +36,122 @@ export default function History() {
   const [selectedItems, setSelectedItems] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
-
-  // Mock history data
+  const [isLoading, setIsLoading] = useState(true);
   const [history, setHistory] = useState([]);
 
+  // Fetch history data from both services
   useEffect(() => {
-    // Simulate loading history data
-    const mockHistory = [
-      {
-        id: 1,
-        type: "stt",
-        content: "I would like to have some water please",
-        originalAudio: "water-request.wav",
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        duration: "3s",
-        language: "en-US",
-        favorite: true,
-        accuracy: 94
-      },
-      {
-        id: 2,
-        type: "tts",
-        content: "Hello, how are you doing today?",
-        audioFile: "greeting.mp3",
-        timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-        duration: "2s",
-        language: "en-US",
-        favorite: false,
-        voiceModel: "personalized"
-      },
-      {
-        id: 3,
-        type: "stt",
-        content: "Can you help me with this problem?",
-        originalAudio: "help-request.wav",
-        timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
-        duration: "4s",
-        language: "en-US",
-        favorite: true,
-        accuracy: 88
-      },
-      {
-        id: 4,
-        type: "tts",
-        content: "Thank you very much for your assistance",
-        audioFile: "thanks.mp3",
-        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-        duration: "3s",
-        language: "en-US",
-        favorite: false,
-        voiceModel: "standard"
-      },
-      {
-        id: 5,
-        type: "stt",
-        content: "I need to go to the hospital immediately",
-        originalAudio: "emergency.wav",
-        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), // 3 days ago
-        duration: "5s",
-        language: "sw-KE",
-        favorite: true,
-        accuracy: 91
-      },
-      {
-        id: 6,
-        type: "tts",
-        content: "What time is our meeting tomorrow?",
-        audioFile: "meeting-question.mp3",
-        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
-        duration: "4s",
-        language: "en-US",
-        favorite: false,
-        voiceModel: "warm"
-      },
-      {
-        id: 7,
-        type: "stt",
-        content: "The weather is beautiful today",
-        originalAudio: "weather-comment.wav",
-        timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
-        duration: "3s",
-        language: "en-US",
-        favorite: false,
-        accuracy: 96
-      },
-      {
-        id: 8,
-        type: "tts",
-        content: "I'm feeling much better now, thank you",
-        audioFile: "feeling-better.mp3",
-        timestamp: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000), // 10 days ago
-        duration: "4s",
-        language: "en-US",
-        favorite: true,
-        voiceModel: "personalized"
-      }
-    ];
-    setHistory(mockHistory);
+    fetchHistoryData();
   }, []);
+
+  const fetchHistoryData = async () => {
+    setIsLoading(true);
+    try {
+      // Fetch from both services in parallel
+      const [speechLabData, voiceProfilesData] = await Promise.all([
+        fetchSpeechLabHistory(),
+        fetchVoicePersonalizerHistory()
+      ]);
+
+      // Combine and normalize data
+      const combinedHistory = [
+        ...speechLabData,
+        ...voiceProfilesData
+      ];
+
+      setHistory(combinedHistory);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchSpeechLabHistory = async () => {
+    try {
+      // In a real app, you'd have endpoints like:
+      // GET /api/history/speech-to-text
+      // GET /api/history/text-to-speech
+      
+      // For now, we'll simulate with localStorage or session data
+      const sttHistory = JSON.parse(localStorage.getItem('speechLab_stt_history') || '[]');
+      const ttsHistory = JSON.parse(localStorage.getItem('speechLab_tts_history') || '[]');
+
+      return [
+        ...sttHistory.map(item => ({
+          ...item,
+          type: 'stt',
+          service: 'speech-lab'
+        })),
+        ...ttsHistory.map(item => ({
+          ...item,
+          type: 'tts',
+          service: 'speech-lab'
+        }))
+      ];
+    } catch (error) {
+      console.error('Error fetching Speech Lab history:', error);
+      return [];
+    }
+  };
+
+  const fetchVoicePersonalizerHistory = async () => {
+    try {
+      // Fetch voice profiles and their samples
+      const profilesResponse = await fetch(`${VOICE_PERSONALIZER_API}/profiles`);
+      if (!profilesResponse.ok) throw new Error('Failed to fetch profiles');
+      
+      const profiles = await profilesResponse.json();
+
+      // Convert profiles and samples to history format
+      const voiceHistory = profiles.flatMap(profile => {
+        const profileHistory = {
+          id: `voice-profile-${profile.id}`,
+          type: 'voice-profile',
+          service: 'voice-personalizer',
+          content: profile.name,
+          timestamp: new Date(profile.created_at),
+          favorite: profile.is_active,
+          accuracy: profile.overall_accuracy,
+          samplesCount: profile.samples_count,
+          tone: profile.tone,
+          voiceModel: profile.voice_model,
+          duration: `${profile.samples_count * 5}s` // Estimate based on samples
+        };
+
+        // If we had sample data, we could include individual samples too
+        return [profileHistory];
+      });
+
+      return voiceHistory;
+    } catch (error) {
+      console.error('Error fetching Voice Personalizer history:', error);
+      return [];
+    }
+  };
+
+  // Save Speech Lab items to localStorage (simulate backend storage)
+  const saveToSpeechLabHistory = (type, data) => {
+    const key = `speechLab_${type}_history`;
+    const existing = JSON.parse(localStorage.getItem(key) || '[]');
+    const newItem = {
+      id: Date.now(),
+      type,
+      ...data,
+      timestamp: new Date().toISOString(),
+      favorite: false
+    };
+    
+    const updated = [newItem, ...existing.slice(0, 49)]; // Keep last 50 items
+    localStorage.setItem(key, JSON.stringify(updated));
+  };
 
   const tabs = [
     { id: "all", name: "All Items", count: history.length, icon: Archive },
     { id: "favorites", name: "Favorites", count: history.filter(item => item.favorite).length, icon: Star },
     { id: "stt", name: "Speech to Text", count: history.filter(item => item.type === "stt").length, icon: MessageSquare },
     { id: "tts", name: "Text to Speech", count: history.filter(item => item.type === "tts").length, icon: Volume2 },
-    { id: "audio", name: "Audio Files", count: history.filter(item => item.audioFile || item.originalAudio).length, icon: FileAudio }
+    { id: "voice-profiles", name: "Voice Profiles", count: history.filter(item => item.type === "voice-profile").length, icon: FileAudio }
   ];
 
   const dateFilters = [
@@ -150,7 +165,8 @@ export default function History() {
   const typeFilters = [
     { id: "all", name: "All Types" },
     { id: "stt", name: "Speech to Text" },
-    { id: "tts", name: "Text to Speech" }
+    { id: "tts", name: "Text to Speech" },
+    { id: "voice-profile", name: "Voice Profiles" }
   ];
 
   const sortOptions = [
@@ -221,10 +237,40 @@ export default function History() {
       }
     });
 
-  const toggleFavorite = (id) => {
-    setHistory(history.map(item => 
-      item.id === id ? { ...item, favorite: !item.favorite } : item
-    ));
+  const toggleFavorite = async (id) => {
+    const item = history.find(item => item.id === id);
+    
+    if (item.service === 'voice-personalizer' && item.type === 'voice-profile') {
+      // Update voice profile active status via API
+      try {
+        const profileId = id.replace('voice-profile-', '');
+        const response = await fetch(`${VOICE_PERSONALIZER_API}/profiles/${profileId}/activate`, {
+          method: 'PUT'
+        });
+        
+        if (response.ok) {
+          // Refresh data
+          fetchHistoryData();
+        }
+      } catch (error) {
+        console.error('Error updating voice profile:', error);
+      }
+    } else {
+      // Update local storage for Speech Lab items
+      setHistory(history.map(item => 
+        item.id === id ? { ...item, favorite: !item.favorite } : item
+      ));
+      
+      // Update localStorage for Speech Lab items
+      if (item.service === 'speech-lab') {
+        const key = `speechLab_${item.type}_history`;
+        const existing = JSON.parse(localStorage.getItem(key) || '[]');
+        const updated = existing.map(storedItem =>
+          storedItem.id === id ? { ...storedItem, favorite: !storedItem.favorite } : storedItem
+        );
+        localStorage.setItem(key, JSON.stringify(updated));
+      }
+    }
   };
 
   const toggleSelectItem = (id) => {
@@ -243,24 +289,67 @@ export default function History() {
     }
   };
 
-  const deleteItems = (ids) => {
-    if (window.confirm(`Are you sure you want to delete ${ids.length} item(s)?`)) {
-      setHistory(history.filter(item => !ids.includes(item.id)));
+  const deleteItems = async (ids) => {
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} item(s)?`)) return;
+
+    try {
+      // Separate items by service
+      const itemsToDelete = history.filter(item => ids.includes(item.id));
+      const speechLabItems = itemsToDelete.filter(item => item.service === 'speech-lab');
+      const voiceProfileItems = itemsToDelete.filter(item => item.service === 'voice-personalizer');
+
+      // Delete Speech Lab items from localStorage
+      speechLabItems.forEach(item => {
+        const key = `speechLab_${item.type}_history`;
+        const existing = JSON.parse(localStorage.getItem(key) || '[]');
+        const updated = existing.filter(storedItem => storedItem.id !== item.id);
+        localStorage.setItem(key, JSON.stringify(updated));
+      });
+
+      // Delete voice profiles via API
+      for (const item of voiceProfileItems) {
+        if (item.type === 'voice-profile') {
+          const profileId = item.id.replace('voice-profile-', '');
+          await fetch(`${VOICE_PERSONALIZER_API}/profiles/${profileId}`, {
+            method: 'DELETE'
+          });
+        }
+      }
+
+      // Refresh data
+      await fetchHistoryData();
       setSelectedItems([]);
+      
+    } catch (error) {
+      console.error('Error deleting items:', error);
+      alert('Error deleting items. Please try again.');
     }
   };
 
   const downloadItem = (item) => {
-    // Simulate download
-    const content = item.type === "stt" 
-      ? `Transcription: ${item.content}\nAccuracy: ${item.accuracy}%\nDate: ${item.timestamp.toLocaleString()}`
-      : `Generated Speech: ${item.content}\nVoice Model: ${item.voiceModel}\nDate: ${item.timestamp.toLocaleString()}`;
-    
+    let content = '';
+    let filename = '';
+
+    switch (item.type) {
+      case 'stt':
+        content = `Speech-to-Text Result\n\nText: ${item.content}\nAccuracy: ${item.accuracy}%\nLanguage: ${item.language}\nDuration: ${item.duration}\nDate: ${new Date(item.timestamp).toLocaleString()}`;
+        filename = `stt-result-${item.id}.txt`;
+        break;
+      case 'tts':
+        content = `Text-to-Speech Result\n\nText: ${item.content}\nVoice Model: ${item.voiceModel}\nLanguage: ${item.language}\nDuration: ${item.duration}\nDate: ${new Date(item.timestamp).toLocaleString()}`;
+        filename = `tts-result-${item.id}.txt`;
+        break;
+      case 'voice-profile':
+        content = `Voice Profile: ${item.content}\n\nTone: ${item.tone}\nAccuracy: ${item.accuracy}%\nSamples: ${item.samplesCount}\nVoice Model: ${item.voiceModel}\nCreated: ${new Date(item.timestamp).toLocaleString()}`;
+        filename = `voice-profile-${item.id}.txt`;
+        break;
+    }
+
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `voicebridge-${item.type}-${item.id}.txt`;
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -276,27 +365,57 @@ export default function History() {
 
   const formatTimeAgo = (date) => {
     const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
+    const diffInSeconds = Math.floor((now - new Date(date)) / 1000);
     
     if (diffInSeconds < 60) return "Just now";
     if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
     if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
     if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
-    return date.toLocaleDateString();
+    return new Date(date).toLocaleDateString();
   };
 
-  const getTotalStorage = () => {
-    // Calculate approximate storage used
-    const audioItems = history.filter(item => item.audioFile || item.originalAudio);
-    return (audioItems.length * 2.5).toFixed(1); // Average 2.5MB per audio file
-  };
+  const clearAllHistory = async () => {
+    if (!window.confirm("Are you sure you want to clear all history? This action cannot be undone.")) return;
 
-  const clearAllHistory = () => {
-    if (window.confirm("Are you sure you want to clear all history? This action cannot be undone.")) {
-      setHistory([]);
+    try {
+      // Clear Speech Lab history from localStorage
+      localStorage.removeItem('speechLab_stt_history');
+      localStorage.removeItem('speechLab_tts_history');
+
+      // Note: We don't clear voice profiles as they are valuable user data
+      
+      // Refresh data
+      await fetchHistoryData();
       setSelectedItems([]);
+      
+    } catch (error) {
+      console.error('Error clearing history:', error);
+      alert('Error clearing history. Please try again.');
     }
   };
+
+  const getServiceIcon = (service) => {
+    return service === 'speech-lab' ? '🧠' : '🎙️';
+  };
+
+  const getServiceName = (service) => {
+    return service === 'speech-lab' ? 'Speech Lab' : 'Voice Personalizer';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-blue-950 dark:to-purple-950 pt-20 pb-16 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="backdrop-blur-xl bg-white/80 dark:bg-gray-800/80 rounded-3xl shadow-2xl border border-white/20 dark:border-gray-700/30 p-8">
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600 mr-3" />
+              <span className="text-lg text-gray-600 dark:text-gray-400">Loading history...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-blue-950 dark:to-purple-950 pt-20 pb-16 px-4">
@@ -308,7 +427,7 @@ export default function History() {
             📚 History & Saved Items
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-            Access your previous conversions, favorite phrases, and saved audio files
+            Access your previous conversions, voice profiles, and saved items from both Speech Lab and Voice Personalizer
           </p>
         </div>
 
@@ -334,8 +453,10 @@ export default function History() {
                 <div className="text-sm text-gray-600 dark:text-gray-400">STT Conversions</div>
               </div>
               <div>
-                <div className="text-2xl font-bold text-orange-600">{getTotalStorage()} MB</div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Storage Used</div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {history.filter(item => item.type === "voice-profile").length}
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Voice Profiles</div>
               </div>
             </div>
           </div>
@@ -389,6 +510,15 @@ export default function History() {
                     </button>
                   )}
                 </div>
+
+                {/* Refresh Button */}
+                <button
+                  onClick={fetchHistoryData}
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh
+                </button>
 
                 {/* Filter Toggle */}
                 <button
@@ -476,9 +606,8 @@ export default function History() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      setHistory(history.map(item => 
-                        selectedItems.includes(item.id) ? { ...item, favorite: true } : item
-                      ));
+                      // Mark selected items as favorite
+                      selectedItems.forEach(id => toggleFavorite(id));
                       setSelectedItems([]);
                     }}
                     className="flex items-center gap-2 px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm transition"
@@ -509,7 +638,7 @@ export default function History() {
                 <p className="text-gray-500 dark:text-gray-500 mb-6">
                   {searchQuery || dateFilter !== "all" || typeFilter !== "all" 
                     ? "Try adjusting your search or filters" 
-                    : "Your speech conversions and saved items will appear here"}
+                    : "Your speech conversions and voice profiles will appear here"}
                 </p>
                 {(searchQuery || dateFilter !== "all" || typeFilter !== "all") && (
                   <button
@@ -552,36 +681,64 @@ export default function History() {
                               <div className={`p-2 rounded-lg ${
                                 item.type === "stt" 
                                   ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-                                  : "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                                  : item.type === "tts"
+                                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                                  : "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
                               }`}>
-                                {item.type === "stt" ? <MessageSquare className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                                {item.type === "stt" ? <MessageSquare className="w-4 h-4" /> : 
+                                 item.type === "tts" ? <Volume2 className="w-4 h-4" /> : 
+                                 <FileAudio className="w-4 h-4" />}
                               </div>
                               <div>
-                                <p className="font-medium text-gray-900 dark:text-white">
-                                  {item.content}
-                                </p>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-medium text-gray-900 dark:text-white">
+                                    {item.content}
+                                  </p>
+                                  <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full text-gray-600 dark:text-gray-400">
+                                    {getServiceIcon(item.service)} {getServiceName(item.service)}
+                                  </span>
+                                </div>
                                 <div className="flex items-center gap-4 mt-1 text-sm text-gray-500 dark:text-gray-400">
                                   <span className="flex items-center gap-1">
                                     <Calendar className="w-3 h-3" />
                                     {formatTimeAgo(item.timestamp)}
                                   </span>
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    {item.duration}
-                                  </span>
+                                  {item.duration && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="w-3 h-3" />
+                                        {item.duration}
+                                      </span>
+                                    </>
+                                  )}
                                   {item.accuracy && (
-                                    <span className={`px-2 py-1 rounded-full text-xs ${
-                                      item.accuracy >= 90 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" :
-                                      item.accuracy >= 80 ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" :
-                                      "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                                    }`}>
-                                      {item.accuracy}% accuracy
-                                    </span>
+                                    <>
+                                      <span>•</span>
+                                      <span className={`px-2 py-1 rounded-full text-xs ${
+                                        item.accuracy >= 90 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" :
+                                        item.accuracy >= 80 ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" :
+                                        "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                                      }`}>
+                                        {item.accuracy}% accuracy
+                                      </span>
+                                    </>
                                   )}
                                   {item.voiceModel && (
-                                    <span className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-1 rounded-full text-xs">
-                                      {item.voiceModel}
-                                    </span>
+                                    <>
+                                      <span>•</span>
+                                      <span className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 px-2 py-1 rounded-full text-xs">
+                                        {item.voiceModel}
+                                      </span>
+                                    </>
+                                  )}
+                                  {item.samplesCount && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 px-2 py-1 rounded-full text-xs">
+                                        {item.samplesCount} samples
+                                      </span>
+                                    </>
                                   )}
                                 </div>
                               </div>
@@ -601,13 +758,15 @@ export default function History() {
                                 {item.favorite ? <Star className="w-4 h-4" /> : <StarOff className="w-4 h-4" />}
                               </button>
                               
-                              <button
-                                onClick={() => copyToClipboard(item.content)}
-                                className="p-2 bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-blue-900/20 rounded-lg transition"
-                                title="Copy text"
-                              >
-                                <Copy className="w-4 h-4" />
-                              </button>
+                              {item.type !== 'voice-profile' && (
+                                <button
+                                  onClick={() => copyToClipboard(item.content)}
+                                  className="p-2 bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-blue-900/20 rounded-lg transition"
+                                  title="Copy text"
+                                >
+                                  <Copy className="w-4 h-4" />
+                                </button>
+                              )}
 
                               <button
                                 onClick={() => downloadItem(item)}
@@ -616,15 +775,6 @@ export default function History() {
                               >
                                 <Download className="w-4 h-4" />
                               </button>
-
-                              {(item.audioFile || item.originalAudio) && (
-                                <button
-                                  className="p-2 bg-gray-100 text-gray-600 hover:bg-purple-50 hover:text-purple-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-purple-900/20 rounded-lg transition"
-                                  title="Play audio"
-                                >
-                                  <Play className="w-4 h-4" />
-                                </button>
-                              )}
 
                               <button
                                 onClick={() => deleteItems([item.id])}
@@ -635,14 +785,6 @@ export default function History() {
                               </button>
                             </div>
                           </div>
-
-                          {/* Audio File Info */}
-                          {(item.audioFile || item.originalAudio) && (
-                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mt-2">
-                              <FileAudio className="w-3 h-3" />
-                              <span>{item.audioFile || item.originalAudio}</span>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>

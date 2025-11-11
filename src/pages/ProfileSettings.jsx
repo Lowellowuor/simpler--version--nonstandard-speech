@@ -8,30 +8,23 @@ import {
   Upload, 
   Shield, 
   Bell, 
-  Globe,
   Eye,
-  EyeOff,
   Volume2,
-  Keyboard,
-  MousePointer,
-  Clock,
+  Database,
   Trash2,
   Edit3,
   CheckCircle2,
-  XCircle,
   Loader2,
-  Mail,
-  Phone,
   MapPin,
   Calendar,
+  BarChart3,
   Star,
   Award,
-  BarChart3,
   Users,
   Lock,
-  Unlock,
-  Database,
-  HardDrive
+  HardDrive,
+  MousePointer,
+  Keyboard
 } from "lucide-react";
 
 export default function ProfileSettings() {
@@ -39,7 +32,6 @@ export default function ProfileSettings() {
   const [userProfile, setUserProfile] = useState({
     name: "John Doe",
     email: "john.doe@example.com",
-    phone: "+254 712 345 678",
     location: "Nairobi, Kenya",
     joinDate: "2024-01-15",
     avatar: "👤"
@@ -48,35 +40,20 @@ export default function ProfileSettings() {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ ...userProfile });
 
-  // Accessibility Settings
-  const [accessibility, setAccessibility] = useState({
-    highContrast: false,
-    largeText: false,
-    screenReader: true,
-    reducedMotion: false,
-    voiceGuidance: true,
-    playbackSpeed: 1.0,
-    autoPlay: false
-  });
-
-  // Language & Regional
-  const [language, setLanguage] = useState("en-US");
-  const [timezone, setTimezone] = useState("Africa/Nairobi");
-  const [dateFormat, setDateFormat] = useState("DD/MM/YYYY");
-
   // Voice Settings
   const [voiceSettings, setVoiceSettings] = useState({
     primaryVoice: "personalized",
     fallbackVoice: "standard",
     speakingRate: 1.0,
     pitch: 0,
-    volume: 80
+    volume: 80,
+    stability: 0.5,
+    similarity: 0.75
   });
 
   // Privacy & Data
   const [privacy, setPrivacy] = useState({
     dataCollection: true,
-    personalizedAds: false,
     shareUsageData: true,
     autoSave: true,
     cloudSync: true,
@@ -92,29 +69,19 @@ export default function ProfileSettings() {
     voiceUpdates: true
   });
 
+  // Accessibility Settings
+  const [accessibility, setAccessibility] = useState({
+    highContrast: false,
+    largeText: false,
+    screenReader: true,
+    reducedMotion: false,
+    voiceGuidance: true,
+    playbackSpeed: 1.0
+  });
+
   const [activeTab, setActiveTab] = useState("profile");
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
-
-  // Language options
-  const languages = [
-    { code: "en-US", name: "English (US)", flag: "🇺🇸" },
-    { code: "en-GB", name: "English (UK)", flag: "🇬🇧" },
-    { code: "sw-KE", name: "Swahili (Kenya)", flag: "🇰🇪" },
-    { code: "sw", name: "Swahili", flag: "🌍" },
-    { code: "es-ES", name: "Spanish", flag: "🇪🇸" },
-    { code: "fr-FR", name: "French", flag: "🇫🇷" }
-  ];
-
-  // Timezone options
-  const timezones = [
-    "Africa/Nairobi",
-    "Africa/Dar_es_Salaam",
-    "Africa/Kampala",
-    "Europe/London",
-    "America/New_York",
-    "Asia/Dubai"
-  ];
 
   // Voice models
   const voiceModels = [
@@ -124,7 +91,7 @@ export default function ProfileSettings() {
     { id: "professional", name: "Professional", accuracy: "88%" }
   ];
 
-  // Usage statistics (mock data)
+  // Usage statistics
   const usageStats = {
     totalSessions: 147,
     wordsProcessed: 12589,
@@ -134,6 +101,7 @@ export default function ProfileSettings() {
     mostUsedTime: "14:00 - 16:00"
   };
 
+  // Profile Management Features
   const handleSaveProfile = () => {
     setIsSaving(true);
     setTimeout(() => {
@@ -150,14 +118,13 @@ export default function ProfileSettings() {
     setIsEditing(false);
   };
 
+  // Data Management Features
   const handleExportData = () => {
     const data = {
       userProfile,
       voiceSettings,
       preferences: {
         accessibility,
-        language,
-        timezone,
         privacy,
         notifications
       },
@@ -184,7 +151,6 @@ export default function ProfileSettings() {
       reader.onload = (e) => {
         try {
           const data = JSON.parse(e.target.result);
-          // In real app, you would validate and set the data
           setSaveMessage("Data imported successfully!");
           setTimeout(() => setSaveMessage(""), 3000);
         } catch (error) {
@@ -197,35 +163,32 @@ export default function ProfileSettings() {
   };
 
   const handleResetSettings = () => {
-    if (window.confirm("Are you sure you want to reset all settings to default? This action cannot be undone.")) {
+    if (window.confirm("Are you sure you want to reset all settings to default?")) {
       setIsSaving(true);
       setTimeout(() => {
-        // Reset all settings to default
+        setVoiceSettings({
+          primaryVoice: "personalized",
+          fallbackVoice: "standard",
+          speakingRate: 1.0,
+          pitch: 0,
+          volume: 80,
+          stability: 0.5,
+          similarity: 0.75
+        });
+        setPrivacy({
+          dataCollection: true,
+          shareUsageData: true,
+          autoSave: true,
+          cloudSync: true,
+          deleteAfter: "30days"
+        });
         setAccessibility({
           highContrast: false,
           largeText: false,
           screenReader: true,
           reducedMotion: false,
           voiceGuidance: true,
-          playbackSpeed: 1.0,
-          autoPlay: false
-        });
-        setLanguage("en-US");
-        setTimezone("Africa/Nairobi");
-        setVoiceSettings({
-          primaryVoice: "personalized",
-          fallbackVoice: "standard",
-          speakingRate: 1.0,
-          pitch: 0,
-          volume: 80
-        });
-        setPrivacy({
-          dataCollection: true,
-          personalizedAds: false,
-          shareUsageData: true,
-          autoSave: true,
-          cloudSync: true,
-          deleteAfter: "30days"
+          playbackSpeed: 1.0
         });
         setIsSaving(false);
         setSaveMessage("All settings reset to default!");
@@ -235,9 +198,8 @@ export default function ProfileSettings() {
   };
 
   const handleDeleteAccount = () => {
-    if (window.confirm("Are you absolutely sure? This will permanently delete your account and all associated data. This action cannot be undone.")) {
+    if (window.confirm("Are you absolutely sure? This will permanently delete your account and all data.")) {
       if (window.confirm("Type 'DELETE' to confirm permanent account deletion:")) {
-        // In real app, this would call your API
         setSaveMessage("Account deletion scheduled. You will receive a confirmation email.");
         setTimeout(() => setSaveMessage(""), 5000);
       }
@@ -246,8 +208,8 @@ export default function ProfileSettings() {
 
   const tabs = [
     { id: "profile", name: "Profile", icon: User },
-    { id: "accessibility", name: "Accessibility", icon: Eye },
     { id: "voice", name: "Voice", icon: Volume2 },
+    { id: "accessibility", name: "Accessibility", icon: Eye },
     { id: "privacy", name: "Privacy & Data", icon: Shield },
     { id: "notifications", name: "Notifications", icon: Bell },
     { id: "data", name: "Data Management", icon: Database }
@@ -313,16 +275,7 @@ export default function ProfileSettings() {
                       className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Phone Number</label>
-                    <input
-                      type="tel"
-                      value={editForm.phone}
-                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                      className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                    />
-                  </div>
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-sm font-medium mb-2">Location</label>
                     <input
                       type="text"
@@ -383,6 +336,123 @@ export default function ProfileSettings() {
           </div>
         );
 
+      case "voice":
+        return (
+          <div className="space-y-6">
+            {/* Voice Model Selection */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border-2 border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold mb-4">Voice Model Selection</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Primary Voice Model</label>
+                  <select
+                    value={voiceSettings.primaryVoice}
+                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, primaryVoice: e.target.value }))}
+                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                  >
+                    {voiceModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} ({model.accuracy})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Fallback Voice Model</label>
+                  <select
+                    value={voiceSettings.fallbackVoice}
+                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, fallbackVoice: e.target.value }))}
+                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                  >
+                    {voiceModels.filter(m => m.id !== voiceSettings.primaryVoice).map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} ({model.accuracy})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Voice Customization */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border-2 border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold mb-4">Voice Customization</h3>
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Speaking Rate: {voiceSettings.speakingRate.toFixed(1)}x
+                  </label>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2"
+                    step="0.1"
+                    value={voiceSettings.speakingRate}
+                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, speakingRate: parseFloat(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Pitch: {voiceSettings.pitch > 0 ? `+${voiceSettings.pitch}` : voiceSettings.pitch}
+                  </label>
+                  <input
+                    type="range"
+                    min="-10"
+                    max="10"
+                    step="1"
+                    value={voiceSettings.pitch}
+                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, pitch: parseInt(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Volume: {voiceSettings.volume}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={voiceSettings.volume}
+                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, volume: parseInt(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Stability: {voiceSettings.stability.toFixed(2)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={voiceSettings.stability}
+                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, stability: parseFloat(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Similarity: {voiceSettings.similarity.toFixed(2)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={voiceSettings.similarity}
+                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, similarity: parseFloat(e.target.value) }))}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
       case "accessibility":
         return (
           <div className="space-y-6">
@@ -394,8 +464,7 @@ export default function ProfileSettings() {
                   { key: 'largeText', label: 'Large Text Size', description: 'Use larger text throughout the application' },
                   { key: 'screenReader', label: 'Screen Reader Support', description: 'Optimize for screen reader compatibility' },
                   { key: 'reducedMotion', label: 'Reduced Motion', description: 'Minimize animations and transitions' },
-                  { key: 'voiceGuidance', label: 'Voice Guidance', description: 'Provide audio cues for interactions' },
-                  { key: 'autoPlay', label: 'Auto-play Audio', description: 'Automatically play generated speech' }
+                  { key: 'voiceGuidance', label: 'Voice Guidance', description: 'Provide audio cues for interactions' }
                 ].map((item) => (
                   <div key={item.key} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-600 rounded-xl">
                     <div>
@@ -443,93 +512,6 @@ export default function ProfileSettings() {
           </div>
         );
 
-      case "voice":
-        return (
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border-2 border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold mb-4">Voice Model Selection</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Primary Voice Model</label>
-                  <select
-                    value={voiceSettings.primaryVoice}
-                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, primaryVoice: e.target.value }))}
-                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  >
-                    {voiceModels.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name} ({model.accuracy})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Fallback Voice Model</label>
-                  <select
-                    value={voiceSettings.fallbackVoice}
-                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, fallbackVoice: e.target.value }))}
-                    className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  >
-                    {voiceModels.filter(m => m.id !== voiceSettings.primaryVoice).map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name} ({model.accuracy})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border-2 border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold mb-4">Voice Customization</h3>
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Speaking Rate: {voiceSettings.speakingRate.toFixed(1)}x
-                  </label>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="2"
-                    step="0.1"
-                    value={voiceSettings.speakingRate}
-                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, speakingRate: parseFloat(e.target.value) }))}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Pitch: {voiceSettings.pitch > 0 ? `+${voiceSettings.pitch}` : voiceSettings.pitch}
-                  </label>
-                  <input
-                    type="range"
-                    min="-10"
-                    max="10"
-                    step="1"
-                    value={voiceSettings.pitch}
-                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, pitch: parseInt(e.target.value) }))}
-                    className="w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Volume: {voiceSettings.volume}%
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="5"
-                    value={voiceSettings.volume}
-                    onChange={(e) => setVoiceSettings(prev => ({ ...prev, volume: parseInt(e.target.value) }))}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
       case "privacy":
         return (
           <div className="space-y-6">
@@ -538,7 +520,6 @@ export default function ProfileSettings() {
               <div className="space-y-4">
                 {[
                   { key: 'dataCollection', label: 'Data Collection', description: 'Allow collection of usage data to improve service' },
-                  { key: 'personalizedAds', label: 'Personalized Ads', description: 'Show relevant advertisements based on usage' },
                   { key: 'shareUsageData', label: 'Share Usage Data', description: 'Share anonymous usage data for research' },
                   { key: 'autoSave', label: 'Auto-save Sessions', description: 'Automatically save your speech sessions' },
                   { key: 'cloudSync', label: 'Cloud Sync', description: 'Sync your data across devices' }

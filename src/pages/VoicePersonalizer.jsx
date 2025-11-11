@@ -7,20 +7,158 @@ import {
   Trash2, 
   User, 
   Settings, 
-  Download, 
   Upload, 
   Volume2,
-  Star,
   Award,
   Target,
   BarChart3,
   CheckCircle2,
-  XCircle,
   Loader2,
-  Clock,
-  Bookmark,
-  Share
+  AlertCircle,
+  Heart,
+  Shield
 } from "lucide-react";
+
+// Backend API configuration
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// API service functions
+const voicePersonalizerAPI = {
+  // Get training phrases optimized for non-standard speech
+  async getTrainingPhrases() {
+    const response = await fetch(`${API_BASE_URL}/api/voice/training-phrases`);
+    if (!response.ok) throw new Error('Failed to fetch training phrases');
+    return await response.json();
+  },
+
+  // Get user's voice profiles
+  async getVoiceProfiles() {
+    const response = await fetch(`${API_BASE_URL}/api/voice/profiles`);
+    if (!response.ok) throw new Error('Failed to fetch voice profiles');
+    const data = await response.json();
+    return data.profiles || [];
+  },
+
+  // Upload voice sample with Whisper transcription
+  async uploadVoiceSample(audioBlob, phrase, category, speechCharacteristics) {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.wav');
+    formData.append('phrase', phrase);
+    formData.append('category', category);
+    formData.append('speech_characteristics', JSON.stringify(speechCharacteristics));
+    
+    const response = await fetch(`${API_BASE_URL}/api/voice/upload-sample`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) throw new Error('Failed to upload voice sample');
+    return await response.json();
+  },
+
+  // Get transcription using Whisper
+  async transcribeAudio(audioBlob) {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.wav');
+    
+    const response = await fetch(`${API_BASE_URL}/api/voice/transcribe`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) throw new Error('Failed to transcribe audio');
+    return await response.json();
+  },
+
+  // Delete voice sample
+  async deleteVoiceSample(sampleId) {
+    const response = await fetch(`${API_BASE_URL}/api/voice/samples/${sampleId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) throw new Error('Failed to delete voice sample');
+    return await response.json();
+  },
+
+  // Create voice profile with Eleven Labs
+  async createVoiceProfile(profileData) {
+    const response = await fetch(`${API_BASE_URL}/api/voice/profiles`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(profileData),
+    });
+    
+    if (!response.ok) throw new Error('Failed to create voice profile');
+    return await response.json();
+  },
+
+  // Train voice model with Eleven Labs
+  async trainVoiceModel(profileId, samples) {
+    const response = await fetch(`${API_BASE_URL}/api/voice/profiles/${profileId}/train`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ samples }),
+    });
+    
+    if (!response.ok) throw new Error('Failed to train voice model');
+    return await response.json();
+  },
+
+  // Activate a voice profile
+  async activateVoiceProfile(profileId) {
+    const response = await fetch(`${API_BASE_URL}/api/voice/profiles/${profileId}/activate`, {
+      method: 'POST',
+    });
+    
+    if (!response.ok) throw new Error('Failed to activate voice profile');
+    return await response.json();
+  },
+
+  // Delete a voice profile
+  async deleteVoiceProfile(profileId) {
+    const response = await fetch(`${API_BASE_URL}/api/voice/profiles/${profileId}`, {
+      method: 'DELETE',
+    });
+    
+    if (!response.ok) throw new Error('Failed to delete voice profile');
+    return await response.json();
+  },
+
+  // Test voice synthesis with Eleven Labs
+  async testVoiceSynthesis(text, profileId) {
+    const response = await fetch(`${API_BASE_URL}/api/voice/synthesize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: text,
+        profile_id: profileId,
+      }),
+    });
+    
+    if (!response.ok) throw new Error('Failed to synthesize voice');
+    return await response.blob();
+  },
+
+  // Analyze speech patterns
+  async analyzeSpeechPatterns(sampleIds) {
+    const response = await fetch(`${API_BASE_URL}/api/voice/analyze-speech`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sample_ids: sampleIds }),
+    });
+    
+    if (!response.ok) throw new Error('Failed to analyze speech patterns');
+    return await response.json();
+  }
+};
 
 export default function VoicePersonalizer() {
   // Core states
@@ -29,156 +167,195 @@ export default function VoicePersonalizer() {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeSample, setActiveSample] = useState(null);
+  const [backendConnected, setBackendConnected] = useState(false);
   
   // Voice profile states
   const [voiceName, setVoiceName] = useState("");
   const [tone, setTone] = useState("neutral");
-  const [accent, setAccent] = useState("neutral");
   const [speakingRate, setSpeakingRate] = useState(1.0);
-  const [pitch, setPitch] = useState(0);
-  const [voiceModel, setVoiceModel] = useState("standard");
+  const [stability, setStability] = useState(0.5);
+  const [similarity, setSimilarity] = useState(0.5);
   
+  // Speech characteristics for non-standard speech
+  const [speechCharacteristics, setSpeechCharacteristics] = useState({
+    articulation_clarity: "medium",
+    speech_rate: "medium",
+    volume_consistency: "medium",
+    has_apraxia: false,
+    has_dysarthria: false,
+    has_stutter: false,
+    uses_aac: false,
+    specific_challenges: []
+  });
+
   // User profiles
   const [userProfiles, setUserProfiles] = useState([]);
   const [activeProfile, setActiveProfile] = useState(null);
   
+  // Training phrases from backend
+  const [trainingPhrases, setTrainingPhrases] = useState({});
+  const [speechAnalysis, setSpeechAnalysis] = useState(null);
+
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
-  // Training phrases for different categories
-  const trainingPhrases = {
-    basic: [
-      "The quick brown fox jumps over the lazy dog",
-      "Hello, how are you doing today?",
-      "I would like to order some food please",
-      "The weather is beautiful outside",
-      "Can you help me with this problem?"
+  // Voice tones optimized for non-standard speech
+  const tones = [
+    { id: "neutral", name: "Neutral", description: "Clear and balanced", icon: "🎯" },
+    { id: "patient", name: "Patient", description: "Slow and clear pacing", icon: "❤️" },
+    { id: "clear", name: "Very Clear", description: "Enhanced articulation", icon: "🔊" },
+    { id: "calm", name: "Calm", description: "Relaxed and soothing", icon: "🌊" },
+    { id: "friendly", name: "Friendly", description: "Warm and approachable", icon: "😊" }
+  ];
+
+  // Speech characteristics options
+  const speechOptions = {
+    clarity: [
+      { id: "low", name: "Needs clearer articulation" },
+      { id: "medium", name: "Moderate clarity" },
+      { id: "high", name: "Clear articulation" }
     ],
-    conversational: [
-      "Thank you very much for your assistance",
-      "I need to go to the store later",
-      "What time is our meeting tomorrow?",
-      "This is really important to me",
-      "Could you please speak more slowly?"
+    rate: [
+      { id: "slow", name: "Slower speech" },
+      { id: "medium", name: "Moderate pace" },
+      { id: "fast", name: "Faster speech" }
     ],
-    emergency: [
-      "I need help immediately",
-      "Please call for medical assistance",
-      "I'm not feeling well right now",
-      "This is an emergency situation",
-      "I need to contact my family"
-    ],
-    personal: [
-      "My name is [Your Name]",
-      "I live at [Your Address]",
-      "My phone number is [Your Number]",
-      "I was born on [Your Birthday]",
-      "My favorite food is [Your Food]"
+    volume: [
+      { id: "low", name: "Softer volume" },
+      { id: "medium", name: "Moderate volume" },
+      { id: "high", name: "Louder volume" }
     ]
   };
 
-  // Voice tones
-  const tones = [
-    { id: "neutral", name: "Neutral", description: "Balanced and clear", icon: "🎯" },
-    { id: "warm", name: "Warm", description: "Friendly and comforting", icon: "❤️" },
-    { id: "energetic", name: "Energetic", description: "Lively and enthusiastic", icon: "⚡" },
-    { id: "calm", name: "Calm", description: "Relaxed and soothing", icon: "🌊" },
-    { id: "professional", name: "Professional", description: "Formal and clear", icon: "💼" },
-    { id: "friendly", name: "Friendly", description: "Casual and approachable", icon: "😊" }
-  ];
-
-  // Accent options
-  const accents = [
-    { id: "neutral", name: "Neutral", description: "Standard pronunciation" },
-    { id: "kenyan", name: "Kenyan English", description: "East African influence" },
-    { id: "british", name: "British", description: "UK English patterns" },
-    { id: "american", name: "American", description: "US English patterns" },
-    { id: "custom", name: "Custom", description: "Personalized accent" }
-  ];
-
-  // Voice models
-  const voiceModels = [
-    { id: "standard", name: "Standard Model", accuracy: "85%", training: "Basic" },
-    { id: "enhanced", name: "Enhanced Model", accuracy: "92%", training: "Recommended" },
-    { id: "premium", name: "Premium Model", accuracy: "96%", training: "Advanced" },
-    { id: "custom", name: "Custom Model", accuracy: "98%", training: "Personalized" }
-  ];
-
-  // Sample user profiles (would come from backend)
-  const sampleProfiles = [
-    {
-      id: 1,
-      name: "John's Voice",
-      tone: "warm",
-      samples: 8,
-      accuracy: 92,
-      created: "2024-01-15",
-      isActive: true
-    },
-    {
-      id: 2,
-      name: "Professional Tone",
-      tone: "professional",
-      samples: 5,
-      accuracy: 87,
-      created: "2024-01-10",
-      isActive: false
-    }
-  ];
-
+  // Load training phrases and profiles on component mount
   useEffect(() => {
-    setUserProfiles(sampleProfiles);
-    setActiveProfile(sampleProfiles.find(p => p.isActive));
+    testBackendConnection();
+    loadTrainingPhrases();
+    loadVoiceProfiles();
   }, []);
+
+  const testBackendConnection = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/health`);
+      const data = await response.json();
+      setBackendConnected(true);
+    } catch (error) {
+      console.error('Backend connection failed:', error);
+      setBackendConnected(false);
+    }
+  };
+
+  const loadTrainingPhrases = async () => {
+    try {
+      const phrases = await voicePersonalizerAPI.getTrainingPhrases();
+      setTrainingPhrases(phrases);
+    } catch (error) {
+      console.error("Failed to load training phrases:", error);
+      setTrainingPhrases({});
+    }
+  };
+
+  const loadVoiceProfiles = async () => {
+    try {
+      const profiles = await voicePersonalizerAPI.getVoiceProfiles();
+      setUserProfiles(profiles);
+      const active = profiles.find(p => p.isActive);
+      setActiveProfile(active);
+    } catch (error) {
+      console.error("Failed to load voice profiles:", error);
+      setUserProfiles([]);
+    }
+  };
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          sampleRate: 22050,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true 
+        } 
+      });
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         setIsProcessing(true);
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        const audioUrl = URL.createObjectURL(audioBlob);
         
-        // Get current phrase category
-        const categories = Object.keys(trainingPhrases);
-        const currentCategory = categories[Math.floor(samples.length / 5) % categories.length];
-        const phrases = trainingPhrases[currentCategory];
-        const currentPhrase = phrases[samples.length % phrases.length];
-        
-        const newSample = {
-          id: Date.now(),
-          phrase: currentPhrase,
-          audioUrl: audioUrl,
-          duration: "5s",
-          date: new Date().toLocaleDateString(),
-          category: currentCategory,
-          status: "processed",
-          accuracy: Math.floor(Math.random() * 20) + 80 // Simulated accuracy
-        };
-        
-        setTimeout(() => {
-          setSamples([...samples, newSample]);
+        try {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          
+          // Get current phrase
+          const categories = Object.keys(trainingPhrases);
+          if (categories.length === 0) {
+            throw new Error("No training phrases available");
+          }
+          
+          const currentCategory = categories[Math.floor(samples.length / 5) % categories.length];
+          const phrases = trainingPhrases[currentCategory] || [];
+          const currentPhrase = phrases[samples.length % phrases.length];
+          
+          if (!currentPhrase) {
+            throw new Error("No phrase available for recording");
+          }
+
+          // Upload to backend with speech characteristics
+          const result = await voicePersonalizerAPI.uploadVoiceSample(
+            audioBlob,
+            currentPhrase,
+            currentCategory,
+            speechCharacteristics
+          );
+
+          const newSample = {
+            id: result.sample_id,
+            phrase: currentPhrase,
+            audioUrl: URL.createObjectURL(audioBlob),
+            duration: result.duration,
+            date: new Date().toISOString(),
+            category: currentCategory,
+            status: "processed",
+            accuracy: result.accuracy,
+            transcription: result.transcription,
+            confidence: result.confidence
+          };
+          
+          setSamples(prev => [...prev, newSample]);
+          
+          // Analyze speech patterns after collecting samples
+          if (samples.length >= 3) {
+            analyzeSpeechPatterns();
+          }
+          
+        } catch (error) {
+          console.error("Failed to process recording:", error);
+          alert(`Recording failed: ${error.message}`);
+        } finally {
           setIsProcessing(false);
-        }, 1500);
+        }
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       
-      // Auto-stop after 5 seconds
+      // Auto-stop after 10 seconds to allow for non-standard speech patterns
       setTimeout(() => {
         if (isRecording) {
           stopRecording();
         }
-      }, 5000);
+      }, 10000);
       
     } catch (error) {
       console.error("Error accessing microphone:", error);
@@ -194,49 +371,56 @@ export default function VoicePersonalizer() {
     }
   };
 
-  const playSample = (sampleId) => {
-    setActiveSample(sampleId);
-    // In real implementation, this would play the audio
-    setTimeout(() => setActiveSample(null), 3000);
+  const analyzeSpeechPatterns = async () => {
+    try {
+      const sampleIds = samples.map(s => s.id);
+      const analysis = await voicePersonalizerAPI.analyzeSpeechPatterns(sampleIds);
+      setSpeechAnalysis(analysis);
+    } catch (error) {
+      console.error("Failed to analyze speech patterns:", error);
+    }
   };
 
-  const deleteSample = (sampleId) => {
-    setSamples(samples.filter(sample => sample.id !== sampleId));
-  };
-
-  const retrainSample = (sampleId) => {
+  const playSample = async (sampleId) => {
     const sample = samples.find(s => s.id === sampleId);
-    if (sample) {
-      // Simulate retraining
-      const updatedSamples = samples.map(s => 
-        s.id === sampleId ? { ...s, status: "processing", accuracy: s.accuracy + 5 } : s
-      );
-      setSamples(updatedSamples);
-      
-      setTimeout(() => {
-        const finalSamples = samples.map(s => 
-          s.id === sampleId ? { ...s, status: "processed" } : s
-        );
-        setSamples(finalSamples);
-      }, 1000);
+    if (sample && sample.audioUrl) {
+      setActiveSample(sampleId);
+      try {
+        const audio = new Audio(sample.audioUrl);
+        await audio.play();
+        audio.onended = () => setActiveSample(null);
+      } catch (error) {
+        console.error("Failed to play audio:", error);
+        setActiveSample(null);
+      }
+    }
+  };
+
+  const deleteSample = async (sampleId) => {
+    try {
+      await voicePersonalizerAPI.deleteVoiceSample(sampleId);
+      setSamples(samples.filter(sample => sample.id !== sampleId));
+    } catch (error) {
+      console.error("Failed to delete sample:", error);
+      alert("Failed to delete sample");
     }
   };
 
   const calculateProgress = () => {
-    const totalRecommended = 20;
+    const totalRecommended = 25; // More samples for non-standard speech
     return Math.min((samples.length / totalRecommended) * 100, 100);
   };
 
   const getAccuracyLevel = (accuracy) => {
-    if (accuracy >= 95) return { color: "text-green-600", label: "Excellent" };
-    if (accuracy >= 85) return { color: "text-blue-600", label: "Good" };
-    if (accuracy >= 75) return { color: "text-yellow-600", label: "Fair" };
+    if (accuracy >= 90) return { color: "text-green-600", label: "Excellent" };
+    if (accuracy >= 75) return { color: "text-blue-600", label: "Good" };
+    if (accuracy >= 60) return { color: "text-yellow-600", label: "Fair" };
     return { color: "text-red-600", label: "Needs Work" };
   };
 
-  const saveVoiceProfile = () => {
-    if (samples.length < 5) {
-      alert("Please record at least 5 voice samples for better personalization");
+  const saveVoiceProfile = async () => {
+    if (samples.length < 10) {
+      alert("Please record at least 10 voice samples for better personalization with non-standard speech");
       return;
     }
     
@@ -247,50 +431,100 @@ export default function VoicePersonalizer() {
 
     setIsProcessing(true);
     
-    const newProfile = {
-      id: Date.now(),
-      name: voiceName,
-      tone: tone,
-      accent: accent,
-      samples: samples.length,
-      accuracy: Math.floor(samples.reduce((acc, sample) => acc + sample.accuracy, 0) / samples.length),
-      created: new Date().toISOString().split('T')[0],
-      isActive: true
-    };
+    try {
+      const profileData = {
+        name: voiceName,
+        tone: tone,
+        speaking_rate: speakingRate,
+        stability: stability,
+        similarity: similarity,
+        speech_characteristics: speechCharacteristics,
+        sample_ids: samples.map(s => s.id)
+      };
 
-    setTimeout(() => {
-      setUserProfiles([...userProfiles.map(p => ({ ...p, isActive: false })), newProfile]);
-      setActiveProfile(newProfile);
-      setIsProcessing(false);
+      const result = await voicePersonalizerAPI.createVoiceProfile(profileData);
       
-      alert(`✅ Voice profile "${voiceName}" saved successfully!`);
-      setCurrentStep(1);
-      setSamples([]);
-      setVoiceName("");
-    }, 2000);
+      if (result.success) {
+        // Train the model with Eleven Labs
+        const trainingResult = await voicePersonalizerAPI.trainVoiceModel(
+          result.profile_id, 
+          samples
+        );
+        
+        if (trainingResult.success) {
+          await loadVoiceProfiles();
+          alert(`✅ Voice profile "${voiceName}" created successfully!`);
+          setCurrentStep(4);
+          setSamples([]);
+          setVoiceName("");
+        } else {
+          alert("Voice profile created but training failed. Please try again.");
+        }
+      } else {
+        alert("Failed to create voice profile. Please try again.");
+      }
+    } catch (error) {
+      console.error("Failed to save voice profile:", error);
+      alert("Failed to create voice profile. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const activateProfile = (profileId) => {
-    const updatedProfiles = userProfiles.map(profile => ({
-      ...profile,
-      isActive: profile.id === profileId
-    }));
-    setUserProfiles(updatedProfiles);
-    setActiveProfile(updatedProfiles.find(p => p.isActive));
+  const activateProfile = async (profileId) => {
+    try {
+      const result = await voicePersonalizerAPI.activateVoiceProfile(profileId);
+      if (result.success) {
+        await loadVoiceProfiles();
+      } else {
+        alert("Failed to activate profile");
+      }
+    } catch (error) {
+      console.error("Failed to activate profile:", error);
+      alert("Failed to activate profile");
+    }
   };
 
-  const deleteProfile = (profileId) => {
+  const deleteProfile = async (profileId) => {
     if (window.confirm("Are you sure you want to delete this voice profile?")) {
-      const updatedProfiles = userProfiles.filter(profile => profile.id !== profileId);
-      setUserProfiles(updatedProfiles);
-      if (activeProfile?.id === profileId) {
-        setActiveProfile(updatedProfiles[0] || null);
+      try {
+        const result = await voicePersonalizerAPI.deleteVoiceProfile(profileId);
+        if (result.success) {
+          await loadVoiceProfiles();
+        } else {
+          alert("Failed to delete profile");
+        }
+      } catch (error) {
+        console.error("Failed to delete profile:", error);
+        alert("Failed to delete profile");
       }
     }
   };
 
+  const testVoiceSynthesis = async () => {
+    if (!activeProfile) {
+      alert("Please activate a voice profile first");
+      return;
+    }
+
+    try {
+      const testText = "Hello, this is a test of your personalized voice. How does it sound?";
+      const audioBlob = await voicePersonalizerAPI.testVoiceSynthesis(testText, activeProfile.id);
+      
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      await audio.play();
+    } catch (error) {
+      console.error("Failed to test voice synthesis:", error);
+      alert("Failed to test voice synthesis");
+    }
+  };
+
   const progress = calculateProgress();
-  const currentCategory = Object.keys(trainingPhrases)[Math.floor(samples.length / 5) % Object.keys(trainingPhrases).length];
+  const categories = Object.keys(trainingPhrases);
+  const currentCategory = categories[Math.floor(samples.length / 5) % categories.length] || "";
+  const currentPhrases = trainingPhrases[currentCategory] || [];
+  const currentPhrase = currentPhrases[samples.length % currentPhrases.length] || "";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 dark:from-gray-900 dark:via-purple-950 dark:to-blue-950 pt-20 pb-16 px-4">
@@ -302,8 +536,26 @@ export default function VoicePersonalizer() {
             🎙️ Voice Personalizer
           </h1>
           <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-            Create and manage your unique voice profiles with AI-powered personalization
+            Create your unique digital voice using AI - Optimized for non-standard speech patterns
           </p>
+          
+          {/* Backend Connection Status */}
+          <div className={`mt-4 text-sm font-medium ${backendConnected ? 'text-green-600' : 'text-red-600'}`}>
+            {backendConnected ? '✅ Backend Connected (Using Eleven Labs + Whisper)' : '❌ Backend Disconnected'}
+          </div>
+          
+          {/* Test Synthesis Button */}
+          {activeProfile && (
+            <div className="mt-4">
+              <button
+                onClick={testVoiceSynthesis}
+                className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all flex items-center gap-2 mx-auto"
+              >
+                <Volume2 className="w-5 h-5" />
+                Test Voice Synthesis
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="backdrop-blur-xl bg-white/80 dark:bg-gray-800/80 rounded-3xl shadow-2xl border border-white/20 dark:border-gray-700/30 p-8">
@@ -336,9 +588,64 @@ export default function VoicePersonalizer() {
               <div className="text-center">
                 <h2 className="text-2xl font-bold mb-2">🎤 Record Voice Samples</h2>
                 <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Record different phrases to train your personal voice model (5-20 recommended)
+                  Record different phrases to train your personal voice model (10-25 recommended for best results)
                 </p>
                 
+                {/* Speech Characteristics */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-6 border-2 border-blue-200 dark:border-blue-800 mb-6">
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-blue-600" />
+                    Speech Characteristics
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <label className="block font-medium mb-2">Articulation Clarity</label>
+                      <select
+                        value={speechCharacteristics.articulation_clarity}
+                        onChange={(e) => setSpeechCharacteristics(prev => ({
+                          ...prev,
+                          articulation_clarity: e.target.value
+                        }))}
+                        className="w-full p-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                      >
+                        {speechOptions.clarity.map(opt => (
+                          <option key={opt.id} value={opt.id}>{opt.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-medium mb-2">Speech Rate</label>
+                      <select
+                        value={speechCharacteristics.speech_rate}
+                        onChange={(e) => setSpeechCharacteristics(prev => ({
+                          ...prev,
+                          speech_rate: e.target.value
+                        }))}
+                        className="w-full p-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                      >
+                        {speechOptions.rate.map(opt => (
+                          <option key={opt.id} value={opt.id}>{opt.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-medium mb-2">Volume Consistency</label>
+                      <select
+                        value={speechCharacteristics.volume_consistency}
+                        onChange={(e) => setSpeechCharacteristics(prev => ({
+                          ...prev,
+                          volume_consistency: e.target.value
+                        }))}
+                        className="w-full p-2 rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700"
+                      >
+                        {speechOptions.volume.map(opt => (
+                          <option key={opt.id} value={opt.id}>{opt.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Progress Overview */}
                 <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border-2 border-purple-200 dark:border-purple-800 mb-6">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
@@ -352,12 +659,12 @@ export default function VoicePersonalizer() {
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-green-600">
-                        {samples.length > 0 ? Math.round(samples.reduce((acc, s) => acc + s.accuracy, 0) / samples.length) : 0}%
+                        {samples.length > 0 ? Math.round(samples.reduce((acc, s) => acc + s.confidence, 0) / samples.length) : 0}%
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Avg Accuracy</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Avg Confidence</div>
                     </div>
                     <div>
-                      <div className="text-2xl font-bold text-orange-600">{currentCategory}</div>
+                      <div className="text-2xl font-bold text-orange-600 capitalize">{currentCategory}</div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">Current Category</div>
                     </div>
                   </div>
@@ -366,7 +673,7 @@ export default function VoicePersonalizer() {
                   <div className="mt-4">
                     <div className="flex justify-between text-sm mb-2">
                       <span>Training Progress</span>
-                      <span>{samples.length}/20 samples</span>
+                      <span>{samples.length}/25 samples</span>
                     </div>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
                       <div 
@@ -382,7 +689,7 @@ export default function VoicePersonalizer() {
                   {!isRecording ? (
                     <button
                       onClick={startRecording}
-                      disabled={isProcessing}
+                      disabled={isProcessing || !backendConnected || !currentPhrase}
                       className="px-12 py-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-2xl font-bold text-lg shadow-2xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                     >
                       <Mic className="w-8 h-8 inline-block mr-3" />
@@ -409,14 +716,23 @@ export default function VoicePersonalizer() {
                   )}
 
                   {/* Current Phrase */}
-                  {!isRecording && !isProcessing && (
+                  {!isRecording && !isProcessing && currentPhrase && (
                     <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 border-2 border-blue-200 dark:border-blue-800">
                       <div className="text-sm text-blue-600 dark:text-blue-400 mb-2 font-semibold">
                         Current Category: {currentCategory.toUpperCase()}
                       </div>
                       <p className="text-lg font-medium text-blue-800 dark:text-blue-300">
-                        "{trainingPhrases[currentCategory][samples.length % trainingPhrases[currentCategory].length]}"
+                        "{currentPhrase}"
                       </p>
+                    </div>
+                  )}
+
+                  {!backendConnected && (
+                    <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 border-2 border-red-200 dark:border-red-800">
+                      <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                        <AlertCircle className="w-5 h-5" />
+                        Backend connection required for voice personalization
+                      </div>
                     </div>
                   )}
                 </div>
@@ -431,7 +747,7 @@ export default function VoicePersonalizer() {
                   </h3>
                   <div className="grid gap-4">
                     {samples.map((sample, index) => {
-                      const accuracyInfo = getAccuracyLevel(sample.accuracy);
+                      const accuracyInfo = getAccuracyLevel(sample.confidence);
                       return (
                         <div key={sample.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 border border-gray-200 dark:border-gray-600">
                           <div className="flex items-center justify-between">
@@ -443,13 +759,18 @@ export default function VoicePersonalizer() {
                                 <div className="flex items-center gap-3 mb-1">
                                   <p className="font-medium text-gray-800 dark:text-gray-200">{sample.phrase}</p>
                                   <span className={`text-xs px-2 py-1 rounded-full ${accuracyInfo.color} bg-opacity-20`}>
-                                    {sample.accuracy}%
+                                    {sample.confidence}%
                                   </span>
                                 </div>
+                                {sample.transcription && (
+                                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                                    Heard: "{sample.transcription}"
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                                   <span>{sample.duration}</span>
                                   <span>•</span>
-                                  <span>{sample.date}</span>
+                                  <span>{new Date(sample.date).toLocaleDateString()}</span>
                                   <span>•</span>
                                   <span className="capitalize">{sample.category}</span>
                                 </div>
@@ -458,17 +779,11 @@ export default function VoicePersonalizer() {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => playSample(sample.id)}
-                                className="p-2 bg-green-500 hover:bg-green-600 rounded-lg text-white transition"
+                                disabled={activeSample === sample.id}
+                                className="p-2 bg-green-500 hover:bg-green-600 rounded-lg text-white transition disabled:opacity-50"
                                 title="Play sample"
                               >
                                 <Play className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => retrainSample(sample.id)}
-                                className="p-2 bg-blue-500 hover:bg-blue-600 rounded-lg text-white transition"
-                                title="Retrain for better accuracy"
-                              >
-                                <Target className="w-4 h-4" />
                               </button>
                               <button
                                 onClick={() => deleteSample(sample.id)}
@@ -479,12 +794,6 @@ export default function VoicePersonalizer() {
                               </button>
                             </div>
                           </div>
-                          {sample.status === "processing" && (
-                            <div className="flex items-center gap-2 mt-2 text-sm text-blue-600">
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              Processing...
-                            </div>
-                          )}
                         </div>
                       );
                     })}
@@ -493,7 +802,7 @@ export default function VoicePersonalizer() {
               )}
 
               {/* Next Button */}
-              {samples.length >= 5 && (
+              {samples.length >= 10 && (
                 <div className="text-center mt-8">
                   <button
                     onClick={() => setCurrentStep(2)}
@@ -542,99 +851,81 @@ export default function VoicePersonalizer() {
                   </div>
                 </div>
 
-                {/* Accent & Model */}
+                {/* Eleven Labs Settings */}
                 <div className="space-y-6">
-                  {/* Accent Selection */}
                   <div>
-                    <h3 className="text-lg font-semibold mb-4">Accent Preference</h3>
-                    <select
-                      value={accent}
-                      onChange={(e) => setAccent(e.target.value)}
-                      className="w-full p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
-                    >
-                      {accents.map((accentOption) => (
-                        <option key={accentOption.id} value={accentOption.id}>
-                          {accentOption.name} - {accentOption.description}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Voice Model Selection */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">AI Model</h3>
-                    <div className="space-y-3">
-                      {voiceModels.map((model) => (
-                        <div
-                          key={model.id}
-                          onClick={() => setVoiceModel(model.id)}
-                          className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                            voiceModel === model.id
-                              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                              : "border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700"
-                          }`}
-                        >
-                          <div className="flex justify-between items-center">
-                            <div className="font-semibold">{model.name}</div>
-                            <div className="text-sm bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 px-2 py-1 rounded">
-                              {model.accuracy}
-                            </div>
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                            Training: {model.training}
-                          </div>
+                    <h3 className="text-lg font-semibold mb-4">Voice Settings</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Stability: {stability.toFixed(2)}
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={stability}
+                          onChange={(e) => setStability(parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          <span>More variable</span>
+                          <span>More stable</span>
                         </div>
-                      ))}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Similarity: {similarity.toFixed(2)}
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={similarity}
+                          onChange={(e) => setSimilarity(parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          <span>More creative</span>
+                          <span>More similar</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Advanced Settings */}
-              <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" />
-                  Advanced Settings
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Speaking Rate: {speakingRate.toFixed(1)}x
-                    </label>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="2"
-                      step="0.1"
-                      value={speakingRate}
-                      onChange={(e) => setSpeakingRate(parseFloat(e.target.value))}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      <span>Slower</span>
-                      <span>Faster</span>
+              {/* Speech Analysis Results */}
+              {speechAnalysis && (
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-6 border-2 border-green-200 dark:border-green-800">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5" />
+                    Speech Pattern Analysis
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {speechAnalysis.articulation_score}%
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Articulation</div>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Pitch: {pitch > 0 ? `+${pitch}` : pitch}
-                    </label>
-                    <input
-                      type="range"
-                      min="-10"
-                      max="10"
-                      step="1"
-                      value={pitch}
-                      onChange={(e) => setPitch(parseInt(e.target.value))}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      <span>Deeper</span>
-                      <span>Higher</span>
+                    <div>
+                      <div className="text-2xl font-bold text-green-600">
+                        {speechAnalysis.consistency_score}%
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Consistency</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-purple-600">
+                        {speechAnalysis.overall_score}%
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Overall Quality</div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Navigation */}
               <div className="flex justify-between pt-6">
@@ -694,16 +985,12 @@ export default function VoicePersonalizer() {
                         <span className="font-semibold capitalize">{tones.find(t => t.id === tone)?.name}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Accent:</span>
-                        <span className="font-semibold">{accents.find(a => a.id === accent)?.name}</span>
+                        <span className="text-gray-600 dark:text-gray-400">Stability:</span>
+                        <span className="font-semibold">{stability.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Speaking Rate:</span>
-                        <span className="font-semibold">{speakingRate.toFixed(1)}x</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">AI Model:</span>
-                        <span className="font-semibold">{voiceModels.find(m => m.id === voiceModel)?.name}</span>
+                        <span className="text-gray-600 dark:text-gray-400">Similarity:</span>
+                        <span className="font-semibold">{similarity.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -712,49 +999,55 @@ export default function VoicePersonalizer() {
                 {/* Existing Profiles */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Your Voice Profiles</h3>
-                  <div className="space-y-3">
-                    {userProfiles.map((profile) => (
-                      <div
-                        key={profile.id}
-                        className={`p-4 rounded-xl border-2 transition-all ${
-                          profile.isActive
-                            ? "border-green-500 bg-green-50 dark:bg-green-900/20"
-                            : "border-gray-200 dark:border-gray-700"
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="font-semibold">{profile.name}</div>
-                          {profile.isActive && (
-                            <div className="flex items-center gap-1 text-green-600 text-sm">
-                              <CheckCircle2 className="w-4 h-4" />
-                              Active
-                            </div>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400 mb-3">
-                          <div>{profile.samples} samples</div>
-                          <div>{profile.accuracy}% accuracy</div>
-                          <div>{profile.tone} tone</div>
-                          <div>{profile.created}</div>
-                        </div>
-                        <div className="flex gap-2">
-                          {!profile.isActive && (
-                            <button
-                              onClick={() => activateProfile(profile.id)}
-                              className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm transition"
-                            >
-                              Activate
-                            </button>
-                          )}
-                          <button
-                            onClick={() => deleteProfile(profile.id)}
-                            className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition"
-                          >
-                            Delete
-                          </button>
-                        </div>
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {userProfiles.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        No voice profiles created yet
                       </div>
-                    ))}
+                    ) : (
+                      userProfiles.map((profile) => (
+                        <div
+                          key={profile.id}
+                          className={`p-4 rounded-xl border-2 transition-all ${
+                            profile.isActive
+                              ? "border-green-500 bg-green-50 dark:bg-green-900/20"
+                              : "border-gray-200 dark:border-gray-700"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="font-semibold">{profile.name}</div>
+                            {profile.isActive && (
+                              <div className="flex items-center gap-1 text-green-600 text-sm">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Active
+                              </div>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400 mb-3">
+                            <div>{profile.samples} samples</div>
+                            <div>{profile.quality_score}% quality</div>
+                            <div className="capitalize">{profile.tone} tone</div>
+                            <div>{new Date(profile.created).toLocaleDateString()}</div>
+                          </div>
+                          <div className="flex gap-2">
+                            {!profile.isActive && (
+                              <button
+                                onClick={() => activateProfile(profile.id)}
+                                className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm transition"
+                              >
+                                Activate
+                              </button>
+                            )}
+                            <button
+                              onClick={() => deleteProfile(profile.id)}
+                              className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm transition"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -762,11 +1055,11 @@ export default function VoicePersonalizer() {
               {/* Save Button */}
               <button
                 onClick={saveVoiceProfile}
-                disabled={isProcessing || !voiceName.trim()}
+                disabled={isProcessing || !voiceName.trim() || !backendConnected}
                 className={`w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-semibold text-lg transition-all ${
                   isProcessing
                     ? "bg-purple-500/50 cursor-wait"
-                    : !voiceName.trim()
+                    : !voiceName.trim() || !backendConnected
                     ? "bg-gray-400 cursor-not-allowed"
                     : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 hover:scale-105"
                 } text-white shadow-2xl`}
@@ -800,7 +1093,7 @@ export default function VoicePersonalizer() {
                 <div className="text-6xl mb-4">🎉</div>
                 <h2 className="text-3xl font-bold mb-2 text-green-600">Voice Profile Ready!</h2>
                 <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  Your personalized voice profile has been successfully created and is ready to use.
+                  Your personalized voice profile has been successfully created with Eleven Labs and is ready to use.
                 </p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -810,12 +1103,12 @@ export default function VoicePersonalizer() {
                   </div>
                   <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
                     <div className="text-2xl font-bold text-blue-600">
-                      {samples.length > 0 ? Math.round(samples.reduce((acc, s) => acc + s.accuracy, 0) / samples.length) : 0}%
+                      {samples.length > 0 ? Math.round(samples.reduce((acc, s) => acc + s.confidence, 0) / samples.length) : 0}%
                     </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">Overall Accuracy</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">Avg Confidence</div>
                   </div>
                   <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
-                    <div className="text-2xl font-bold text-green-600">{tones.find(t => t.id === tone)?.name}</div>
+                    <div className="text-2xl font-bold text-green-600 capitalize">{tones.find(t => t.id === tone)?.name}</div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Voice Tone</div>
                   </div>
                 </div>
@@ -828,10 +1121,21 @@ export default function VoicePersonalizer() {
                     Try in Speech Lab
                   </button>
                   <button
-                    onClick={() => setCurrentStep(1)}
+                    onClick={() => {
+                      setCurrentStep(1);
+                      setSamples([]);
+                      setVoiceName("");
+                    }}
                     className="px-6 py-3 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition"
                   >
                     Create Another Profile
+                  </button>
+                  <button
+                    onClick={testVoiceSynthesis}
+                    className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all flex items-center gap-2"
+                  >
+                    <Volume2 className="w-5 h-5" />
+                    Test Voice
                   </button>
                 </div>
               </div>
