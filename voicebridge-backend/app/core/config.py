@@ -1,6 +1,10 @@
 import os
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class Settings(BaseSettings):
     API_V1_STR: str = "/api"
@@ -9,22 +13,37 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:8000",
         "https://your-frontend-domain.com"
     ]
 
+    # Whisper STT Configuration
     WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base")
     WHISPER_DEVICE: str = os.getenv("WHISPER_DEVICE", "cpu")
 
-    ELEVENLABS_API_KEY: str
-    ELEVENLABS_VOICE_ID: str = "default"
+    # ElevenLabs TTS Configuration
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "default")
 
-    HUGGINGFACE_TOKEN: str
-    HUGGINGFACE_MODEL_REPO: str = "cdl-inclusion/nairobo_innovation_sprint"
+    # HuggingFace Configuration
+    HUGGINGFACE_TOKEN: str = os.getenv("HUGGINGFACE_TOKEN", "")
+    HUGGINGFACE_MODEL_REPO: str = os.getenv("HUGGINGFACE_MODEL_REPO", "cdl-inclusion/nairobo_innovation_sprint")
 
-    UPLOAD_DIR: str = "data/voice_samples"
-    MODEL_DIR: str = "data/trained_models"
+    # File Storage Configuration
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "data/voice_samples")
+    MODEL_DIR: str = os.getenv("MODEL_DIR", "data/trained_models")
+    AUDIO_DIR: str = os.getenv("AUDIO_DIR", "data/generated_audio")
 
-    DATABASE_URL: str = "sqlite:///./voicebridge.db"
+    # Database Configuration
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./voicebridge.db")
+
+    # Audio Processing Configuration
+    MAX_AUDIO_SIZE_MB: int = int(os.getenv("MAX_AUDIO_SIZE_MB", "50"))
+    ALLOWED_AUDIO_FORMATS: List[str] = ["wav", "mp3", "m4a", "flac"]
+
+    # Application Settings
+    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "info")
 
     class Config:
         env_file = ".env"
@@ -32,5 +51,15 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 
-# instantiate
+# Instantiate settings
 settings = Settings()
+
+# Create required directories on startup
+def create_directories():
+    """Create necessary directories if they don't exist"""
+    directories = [settings.UPLOAD_DIR, settings.MODEL_DIR, settings.AUDIO_DIR]
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+
+# Create directories when module is imported
+create_directories()
